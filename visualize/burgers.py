@@ -27,7 +27,7 @@ def burgers_movie(u, out, start_x, end_x, dx, t, dt, v, file_path):
 
 
 def burgers_heatmap(u, out, start_x, end_x, dx, t, dt, v, file_path, cmap='viridis'):
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 6))
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(10, 6))
     
     heatmap_1 = ax1.imshow(u, cmap, origin='lower', aspect='auto')
     ax1.set_title('Ground Truth')
