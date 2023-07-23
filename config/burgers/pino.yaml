@@ -1,0 +1,60 @@
+model:
+  model: 'PINO'
+  layers: [16, 24, 24, 32, 32]
+  modes1: [15, 12, 9, 9]
+  modes2: [15, 12, 9, 9]
+  fc_dim: 128
+  width: 64
+  act: gelu
+  num_pad: 4
+
+data:
+  dataset: 'Burgers'
+  data_path: '../data/fluid/burgers/1D_Burgers_Sols_Nu0.01.hdf5'
+  start_x: -1
+  end_x: 1
+  t: 2
+  raw_resolution: [1024, 201]
+  sample_resolution: [256, 201]
+  v: 0.01
+  train_ratio: 0.6
+  valid_ratio: 0.2
+  test_ratio: 0.2
+  subset: False
+  subset_ratio: 0.1
+
+train:
+  random_seed: 2020
+  cuda: True
+  device: 5
+  epochs: 1000
+  patience: 10
+  eval_freq: 5
+  train_batchsize: 400
+  saving_checkpoints: False
+  saving_best: True
+  data_weight: 10.0
+  f_weight: 0.0
+  ic_weight: 0.0
+
+eval:
+  eval_batchsize: 200
+  eval_resolution: [1024, 201]
+  visualize: True
+  heatmap: True
+  movie: True
+
+optimize:
+  optimizer: 'Adam'
+  lr: 0.002
+  weight_decay: 0.0001
+  momentum: 0.95
+  milestones: [200, 400, 600]
+  gamma: 0.5
+
+log:
+  verbose: True
+  log: True
+  log_dir: './logs'
+  wandb: False
+  wandb_project: ''

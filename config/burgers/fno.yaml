@@ -1,0 +1,57 @@
+model:
+  model: 'FNO2d'
+  layers: [16, 24, 24, 32, 32]
+  modes1: [15, 12, 9, 9]
+  modes2: [15, 12, 9, 9]
+  fc_dim: 128
+  width: 64
+  act: gelu
+  num_pad: 4
+
+data:
+  dataset: 'Burgers'
+  data_path: '../data/fluid/burgers/1D_Burgers_Sols_Nu1.0.hdf5'
+  start_x: -1
+  end_x: 1
+  t: 2
+  num_grid_x: 1024
+  num_grid_t: 200
+  x_sample_factor: 4
+  t_sample_factor: 1
+  v: 1.0
+  train_ratio: 0.6
+  valid_ratio: 0.2
+  test_ratio: 0.2
+  subset: False
+  subset_ratio: 0.1
+
+train:
+  random_seed: 2020
+  cuda: True
+  device: 5
+  epochs: 1000
+  patience: 10
+  eval_freq: 5
+  batch_size: 100
+  saving_checkpoints: False
+  saving_best: True
+
+visual:
+  visualize: True
+  heatmap: True
+  movie: True
+
+optimize:
+  optimizer: 'Adam'
+  lr: 0.001
+  weight_decay: 0.0001
+  momentum: 0.95
+  milestones: [150, 300, 450]
+  gamma: 0.5
+
+log:
+  verbose: True
+  log: True
+  log_dir: './logs'
+  wandb: False
+  wandb_project: ''
