@@ -2,7 +2,7 @@ import torch
 import logging
 import os
 from tqdm import tqdm
-from utils import LpLoss, LossRecord, km_flow_loss
+from utils import LpLoss, LossRecord, km_flow_loss, fdm_ns_vorticity
 from time import time
 from models import FNO3d
 from dataset import KMFlowDataset
@@ -132,30 +132,41 @@ class PINO3DTrainer(BaseTrainer):
                 x = x.to('cuda')
                 y = y.to('cuda')
                 y_pred = model(x).reshape(y.shape)
+                fdm = fdm_ns_vorticity(y_pred, 1/dataset.Re, dataset.test_dataset.dt)
                 break
         
         x = x.cpu().detach().numpy()[0]
         y = y.cpu().detach().numpy()[0]
         y_pred = y_pred.cpu().detach().numpy()[0]
+        fdm = fdm.cpu().detach().numpy()[0]
         
         if heatmap:
             if self.verbose:
                 self.logger("Visualizing heatmap")
-            km_flow_heatmap(y, y_pred, 
+                start = time()
+            km_flow_heatmap(y, y_pred, fdm,
                             start_x=dataset.test_dataset.start_x, end_x=dataset.test_dataset.end_x,
                             start_y=dataset.test_dataset.start_y, end_y=dataset.test_dataset.end_y,
                             dx=dataset.test_dataset.dx, dy=dataset.test_dataset.dy, dt=dataset.test_dataset.dt,
                             file_path=os.path.join(self.saving_path, "km_flow_heatmap.png"))
-        
+            if self.verbose:
+                self.logger("Heatmap saved in {}".format(os.path.join(self.saving_path, "km_flow_heatmap.png")))
+                self.logger("Visualizing heatmap costs {:.2f}s".format(time() - start))
+            
+            
         if movie:
             if self.verbose:
                 self.logger("Visualizing movie")
-            km_flow_movie(y, y_pred, 
+                start = time()
+            km_flow_movie(y, y_pred, fdm,
                           start_x=dataset.test_dataset.start_x, end_x=dataset.test_dataset.end_x,
                           start_y=dataset.test_dataset.start_y, end_y=dataset.test_dataset.end_y,
                           dx=dataset.test_dataset.dx, dy=dataset.test_dataset.dy, dt=dataset.test_dataset.dt,
                           file_path=os.path.join(self.saving_path, "km_flow_movie.gif"))
-
+            if self.verbose:
+                self.logger("Movie saved in {}".format(os.path.join(self.saving_path, "km_flow_movie.gif")))
+                self.logger("Visualizing movie costs {:.2f}s".format(time() - start))
+                
 
 def pino_km_flow(args):
     if args['verbose']:
