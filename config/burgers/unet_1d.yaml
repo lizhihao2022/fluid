@@ -35,7 +35,7 @@ train:
 
 eval:
   eval_batchsize: 200
-  eval_resolution: [1024, 201]
+  eval_resolution: [256, 201]
   visualize: True
   heatmap: True
   movie: True

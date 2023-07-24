@@ -2,7 +2,7 @@ import torch
 import logging
 import os
 from tqdm import tqdm
-from utils import LpLoss, LossRecord, burgers_loss
+from utils import LpLoss, LossRecord, burgers_loss, fdm_burgers
 from time import time
 from models import UNet2d
 from dataset import BurgersDataset
@@ -148,14 +148,16 @@ class UNet2DTrainer(BaseTrainer):
                 y = y.to('cuda')
                 y_pred = model(new_x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
                 y_pred = y_pred[:, -y.shape[1]:, :, 0]
+                fdm = fdm_burgers(y_pred, dataset.test_dataset.v, dataset.test_dataset.t)
                 break
         
         x = x.cpu().detach().numpy()[0]
         y = y.cpu().detach().numpy()[0]
         y_pred = y_pred.cpu().detach().numpy()[0]
+        fdm = fdm.cpu().detach().numpy()[0]
         
         if heatmap:
-            burgers_heatmap(y, y_pred, 
+            burgers_heatmap(y, y_pred, fdm,
                             start_x=dataset.test_dataset.start_x, end_x=dataset.test_dataset.end_x,
                             dx=dataset.test_dataset.dx, t=dataset.test_dataset.t, dt=dataset.test_dataset.dt, v=dataset.test_dataset.v,
                             file_path=os.path.join(self.saving_path, "burgers_heatmap.png"))

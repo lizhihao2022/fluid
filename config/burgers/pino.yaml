@@ -26,15 +26,15 @@ data:
 train:
   random_seed: 2020
   cuda: True
-  device: 5
+  device: 7
   epochs: 1000
-  patience: 10
-  eval_freq: 5
+  patience: -1
+  eval_freq: 10
   train_batchsize: 400
   saving_checkpoints: False
   saving_best: True
   data_weight: 10.0
-  f_weight: 0.0
+  f_weight: 1.0
   ic_weight: 0.0
 
 eval:

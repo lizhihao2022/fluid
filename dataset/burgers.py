@@ -48,37 +48,15 @@ class BurgersDataset:
         
         return all_data
     
-    # def load_data(self):
-    #     all_data = sio.loadmat(self.data_path)
-    #     x = all_data['input'][:, ::self.x_sample_factor]
-    #     y = all_data['output'][:, ::self.t_sample_factor, ::self.x_sample_factor]
-    #     v = all_data['visc']
+    def load_data(self):
+        all_data = sio.loadmat(self.data_path)
+        x = all_data['input'][:, ::self.x_sample_factor]
+        y = all_data['output'][:, ::self.t_sample_factor, ::self.x_sample_factor]
+        v = all_data['visc']
         
-    #     self.x = torch.from_numpy(x).float()
-    #     self.y = torch.from_numpy(y).float()
-    #     self.v = torch.from_numpy(v).float().item()
-
-    # def process_data(self, x: torch.Tensor, y: torch.Tensor, mode="train"):
-    #     """
-    #     x: (N, X)
-    #     y: (N, T, X)
-    #     """
-    #     if mode == "train":
-    #         grid_x = torch.tensor(np.linspace(self.start_x, self.end_x, self.num_grid_x + 1)[:-1], dtype=torch.float32)  # (X)
-    #         grid_t = torch.tensor(np.linspace(0, self.t, self.num_grid_t), dtype=torch.float32)  # (T)
-    #     else:
-    #         grid_x = torch.tensor(np.linspace(self.start_x, self.end_x, self.num_grid_x), dtype=torch.float32)  # (X)
-    #         grid_t = torch.tensor(np.linspace(0, self.t, self.num_grid_t + 1)[1:], dtype=torch.float32)  # (T) 
-    #     grid_x = grid_x.reshape(1, 1, self.num_grid_x)  # (1, 1, X)
-    #     grid_t = grid_t.reshape(1, self.num_grid_t, 1)  # (1, T, 1)
-        
-    #     x = x.reshape(x.shape[0], 1, self.num_grid_x)   # (N, 1, X)
-    #     x = x.repeat([1, self.num_grid_t, 1])   # (N, T, X)
-    #     grid_x = grid_x.repeat([x.shape[0], self.num_grid_t, 1])  # (N, T, X)
-    #     grid_t = grid_t.repeat([x.shape[0], 1, self.num_grid_x])  # (N, T, X)
-    #     x = torch.stack([x, grid_x, grid_t], dim=3) # (N, T, X, 3)
-        
-        return TensorDataset(x, y)
+        self.x = torch.from_numpy(x).float()
+        self.y = torch.from_numpy(y).float()
+        self.v = torch.from_numpy(v).float().item()
 
 
 class BurgersBase(Dataset):
@@ -97,28 +75,32 @@ class BurgersBase(Dataset):
         self.dx = (end_x - start_x) / self.num_grid_x
         self.mode = mode
         
-        self.x, self.y = self.process(data)
+        self.x, self.y = self.process(data, self.x_sample_factor, self.t_sample_factor, 
+                                      self.num_grid_x, self.num_grid_t)
         
-    def process(self, data):
-        x = data[:, 0, ::self.x_sample_factor]
-        y = data[:, ::self.t_sample_factor, ::self.x_sample_factor]
-                
+        # if mode == "train":
+        #     self.pde_x, pde_y  = self.process(data, 1, 1, raw_resolution[0], raw_resolution[1])
+        
+    def process(self, data, x_sample_factor, t_sample_factor, num_grid_x, num_grid_t):
+        x = data[:, 0, ::x_sample_factor]
+        y = data[:, ::t_sample_factor, ::x_sample_factor]
+    
         x = torch.from_numpy(x).float()
         y = torch.from_numpy(y).float()
         
         if self.mode == "train":
-            grid_x = torch.tensor(np.linspace(self.start_x, self.end_x, self.num_grid_x + 1)[:-1], dtype=torch.float32)  # (X)
-            grid_t = torch.tensor(np.linspace(0, self.t, self.num_grid_t), dtype=torch.float32)  # (T)
+            grid_x = torch.tensor(np.linspace(self.start_x, self.end_x, num_grid_x + 1)[:-1], dtype=torch.float32)  # (X)
+            grid_t = torch.tensor(np.linspace(0, self.t, num_grid_t), dtype=torch.float32)  # (T)
         else:
-            grid_x = torch.tensor(np.linspace(self.start_x, self.end_x, self.num_grid_x), dtype=torch.float32)  # (X)
-            grid_t = torch.tensor(np.linspace(0, self.t, self.num_grid_t + 1)[1:], dtype=torch.float32)  # (T) 
-        grid_x = grid_x.reshape(1, 1, self.num_grid_x)  # (1, 1, X)
-        grid_t = grid_t.reshape(1, self.num_grid_t, 1)  # (1, T, 1)
+            grid_x = torch.tensor(np.linspace(self.start_x, self.end_x, num_grid_x), dtype=torch.float32)  # (X)
+            grid_t = torch.tensor(np.linspace(0, self.t, num_grid_t + 1)[1:], dtype=torch.float32)  # (T) 
+        grid_x = grid_x.reshape(1, 1, num_grid_x)  # (1, 1, X)
+        grid_t = grid_t.reshape(1, num_grid_t, 1)  # (1, T, 1)
         
-        x = x.reshape(x.shape[0], 1, self.num_grid_x)   # (N, 1, X)
-        x = x.repeat([1, self.num_grid_t, 1])   # (N, T, X)
-        grid_x = grid_x.repeat([x.shape[0], self.num_grid_t, 1])  # (N, T, X)
-        grid_t = grid_t.repeat([x.shape[0], 1, self.num_grid_x])  # (N, T, X)
+        x = x.reshape(x.shape[0], 1, num_grid_x)   # (N, 1, X)
+        x = x.repeat([1, num_grid_t, 1])   # (N, T, X)
+        grid_x = grid_x.repeat([x.shape[0], num_grid_t, 1])  # (N, T, X)
+        grid_t = grid_t.repeat([x.shape[0], 1, num_grid_x])  # (N, T, X)
         x = torch.stack([x, grid_x, grid_t], dim=3) # (N, T, X, 3)
         
         return x, y
@@ -127,4 +109,8 @@ class BurgersBase(Dataset):
         return self.x.shape[0]
     
     def __getitem__(self, idx):
+        # if self.mode == "train":
+        #     return self.x[idx], self.y[idx], self.pde_x[idx]
+        # else:
+        #     return self.x[idx], self.y[idx]
         return self.x[idx], self.y[idx]
