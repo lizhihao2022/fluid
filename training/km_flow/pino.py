@@ -153,7 +153,6 @@ class PINO3DTrainer(BaseTrainer):
                 self.logger("Heatmap saved in {}".format(os.path.join(self.saving_path, "km_flow_heatmap.png")))
                 self.logger("Visualizing heatmap costs {:.2f}s".format(time() - start))
             
-            
         if movie:
             if self.verbose:
                 self.logger("Visualizing movie")

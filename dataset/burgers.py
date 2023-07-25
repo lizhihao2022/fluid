@@ -38,7 +38,7 @@ class BurgersDataset:
         
         del all_data
         
-        self.train_loader = DataLoader(self.train_dataset, batch_size=train_batchsize, shuffle=True)
+        self.train_loader = DataLoader(self.train_dataset, batch_size=train_batchsize, shuffle=False)
         self.valid_loader = DataLoader(self.valid_dataset, batch_size=eval_batchsize, shuffle=False)
         self.test_loader = DataLoader(self.test_dataset, batch_size=eval_batchsize, shuffle=False)
     

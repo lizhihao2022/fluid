@@ -77,7 +77,7 @@ class PINO2DTrainer(BaseTrainer):
         self.logger("Test loss: {}".format(test_loss_record))
 
     def train(self, model, train_loader, optimizer, criterion, scheduler=None, regularizer=None, **kwargs):
-        loss_record = LossRecord(['train_loss', 'data_loss', 'equation_loss', 'ic_loss'])
+        loss_record = LossRecord(['train_loss', 'data_loss', 'equation_loss', 'ic_loss', 'raw_equation_loss', 'f0_loss'])
         model.cuda()
         model.train()
         with tqdm(total=len(train_loader)) as bar:
@@ -89,7 +89,8 @@ class PINO2DTrainer(BaseTrainer):
                 y_pred = model(x).reshape(y.shape)
                 # pde_y_pred = model(pde_x).squeeze()
                 data_loss = criterion(y_pred, y)
-                ic_loss, equation_loss = burgers_loss(y_pred, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'])
+                ic_loss, equation_loss_0, equation_loss  = burgers_loss(y_pred, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'], raw=y)
+                raw_ic_loss, raw_equation_loss = burgers_loss(y, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'])
                 train_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
                 # compute gradient
                 optimizer.zero_grad()
@@ -101,6 +102,8 @@ class PINO2DTrainer(BaseTrainer):
                     'data_loss': data_loss.item(),
                     'equation_loss': equation_loss.item(),
                     'ic_loss': ic_loss.item(),
+                    'raw_equation_loss': raw_equation_loss.item(),
+                    'f0_loss': equation_loss_0.item(),
                 })
                 bar.update(1)
                 bar.set_postfix_str("train loss: {:.4f}".format(train_loss.item()))
@@ -109,7 +112,7 @@ class PINO2DTrainer(BaseTrainer):
         return loss_record
     
     def evaluate(self, model, eval_loader, criterion, metric_list, split="valid", **kwargs):
-        loss_record = LossRecord([split + '_loss', 'data_loss', 'equation_loss', 'ic_loss'])
+        loss_record = LossRecord([split + '_loss', 'data_loss', 'equation_loss', 'ic_loss', 'raw_equation_loss', 'f0_loss'])
         model.eval()
         with torch.no_grad():
             for x, y in eval_loader:
@@ -118,13 +121,16 @@ class PINO2DTrainer(BaseTrainer):
                 # compute loss
                 y_pred = model(x).reshape(y.shape)
                 data_loss = criterion(y_pred, y)
-                ic_loss, equation_loss = burgers_loss(y_pred, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'])
+                ic_loss, equation_loss_0, equation_loss = burgers_loss(y_pred, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'], raw=y)
+                raw_ic_loss, raw_equation_loss = burgers_loss(y, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'])
                 eval_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
                 loss_record.update({
                     split + '_loss': eval_loss.item(),
                     'data_loss': data_loss.item(),
                     'equation_loss': equation_loss.item(),
                     'ic_loss': ic_loss.item(),
+                    'raw_equation_loss': raw_equation_loss.item(),
+                    'f0_loss': equation_loss_0.item(),
                 })
         return loss_record
     

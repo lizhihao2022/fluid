@@ -368,11 +368,13 @@ def pinn_loss_1d(u, u0, v):
     return loss_u0, loss_f
 
 
-def burgers_loss(u, u0, v, t):
+def burgers_loss(u, u0, v, t, raw=None):
     batchsize = u.size(0)
     nt = u.size(1)
     nx = u.size(2)
     u = u.reshape(batchsize, nt, nx)
+    if raw is not None:
+        raw = raw.reshape(batchsize, nt, nx)
     
     index_t = torch.zeros(nx,).long()
     index_x = torch.tensor(range(nx)).long()
@@ -383,7 +385,12 @@ def burgers_loss(u, u0, v, t):
     f = torch.zeros(Du.shape, device=u.device)
     loss_f = F.mse_loss(Du, f)
     
-    return loss_ic, loss_f
+    if raw is not None:
+        Du_raw = fdm_burgers(raw, v, t)[:, :, :]
+        loss_raw = F.mse_loss(Du, Du_raw)
+        return loss_ic, loss_f, loss_raw
+    else:
+        return loss_ic, loss_f
 
 
 def fdm_ns_vorticity(w, v=1/40, t_interval=1.0):
