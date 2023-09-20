@@ -2,82 +2,9 @@ import math
 import torch
 import torch.nn.functional as F
 import numpy as np
+from torch.autograd import grad
 
 
-# class LpLoss(object):
-#     def __init__(self, d=1, p=2, L=2*math.pi, reduce_dims=0, reductions='sum'):
-#         super().__init__()
-
-#         self.d = d
-#         self.p = p
-
-#         if isinstance(reduce_dims, int):
-#             self.reduce_dims = [reduce_dims]
-#         else:
-#             self.reduce_dims = reduce_dims
-        
-#         if self.reduce_dims is not None:
-#             if isinstance(reductions, str):
-#                 assert reductions == 'sum' or reductions == 'mean'
-#                 self.reductions = [reductions]*len(self.reduce_dims)
-#             else:
-#                 for j in range(len(reductions)):
-#                     assert reductions[j] == 'sum' or reductions[j] == 'mean'
-#                 self.reductions = reductions
-
-#         if isinstance(L, float):
-#             self.L = [L]*self.d
-#         else:
-#             self.L = L
-    
-#     def uniform_h(self, x):
-#         h = [0.0]*self.d
-#         for j in range(self.d, 0, -1):
-#             h[-j] = self.L[-j]/x.size(-j)
-        
-#         return h
-
-#     def reduce_all(self, x):
-#         for j in range(len(self.reduce_dims)):
-#             if self.reductions[j] == 'sum':
-#                 x = torch.sum(x, dim=self.reduce_dims[j], keepdim=True)
-#             else:
-#                 x = torch.mean(x, dim=self.reduce_dims[j], keepdim=True)
-        
-#         return x
-
-#     def abs(self, x, y, h=None):
-#         #Assume uniform mesh
-#         if h is None:
-#             h = self.uniform_h(x)
-#         else:
-#             if isinstance(h, float):
-#                 h = [h]*self.d
-        
-#         const = math.prod(h)**(1.0/self.p)
-#         diff = const*torch.norm(torch.flatten(x, start_dim=-self.d) - torch.flatten(y, start_dim=-self.d), \
-#                                               p=self.p, dim=-1, keepdim=False)
-
-#         if self.reduce_dims is not None:
-#             diff = self.reduce_all(diff).squeeze()
-            
-#         return diff
-
-#     def rel(self, x, y):
-
-#         diff = torch.norm(torch.flatten(x, start_dim=-self.d) - torch.flatten(y, start_dim=-self.d), \
-#                           p=self.p, dim=-1, keepdim=False)
-#         ynorm = torch.norm(torch.flatten(y, start_dim=-self.d), p=self.p, dim=-1, keepdim=False)
-
-#         diff = diff/ynorm
-
-#         if self.reduce_dims is not None:
-#             diff = self.reduce_all(diff).squeeze()
-            
-#         return diff
-
-#     def __call__(self, x, y):
-#         return self.rel(x, y)
 class LpLoss(object):
     '''
     loss function with rel/abs Lp loss
@@ -344,8 +271,48 @@ def fdm_burgers(u, v, D=1):
     ux = torch.fft.irfft(ux_h[:, :, :k_max+1], dim=2, n=nx)
     uxx = torch.fft.irfft(uxx_h[:, :, :k_max+1], dim=2, n=nx)
     ut = (u[:, 2:, :] - u[:, :-2, :]) / (2 * dt)
-    Du = ut + (ux * u - v * uxx)[:,1:-1,:]
+    Du = ut + (ux * u - v * uxx)[:, 1:-1, :]
     return Du
+
+
+def new_fdm_burgers(u, v, dx, dt):
+    batch_size = u.size(0)
+    nt = u.size(1)
+    nx = u.size(2)
+    first_column = torch.zeros(batch_size, nt, 1, device=u.device)
+    last_column = torch.zeros(batch_size, nt, 1, device=u.device)
+    new_u = torch.cat((first_column, u, last_column), dim=2)
+    new_u[:, :, 0] = new_u[:, :, -2]
+    new_u[:, :, -1] = new_u[:, :, 1]
+    
+    u_x = (new_u[:, 1:-1, 2:] - new_u[:, 1:-1, :-2]) / (2 * dx)
+    u_xx = (new_u[:, 1:-1, 2:] - 2 * new_u[:, 1:-1, 1:-1] + new_u[:, 1:-1, :-2]) / (dx) ** 2
+    u_t = (new_u[:, 2:, 1:-1] - new_u[:, :-2, 1:-1]) / (2 * dt)
+    Du = u_t + (u_x * new_u[:, 1:-1, 1:-1]) - (v / torch.pi) * u_xx
+    
+    return Du
+
+
+def ad_burgers(u, x, v):
+    u_1 = grad(u.sum(), x, create_graph=True)[0]
+    u_x = u_1[:, :, :, 1]
+    u_t = u_1[:, :, :, 2]
+    u_xx = grad(u_x.sum(), x, create_graph=True)[0][:, :, :, 1]
+
+    f = u_t + u * u_x - v * u_xx
+    
+    return f
+
+def ad_burgers_loss(u, x, v):
+    u_1 = grad(u.sum(), x, create_graph=True)[0]
+    u_x = u_1[:, :, :, 1]
+    u_t = u_1[:, :, :, 2]
+    u_xx = grad(u_x.sum(), x, create_graph=True)[0][:, :, :, 1]
+
+    f = u_t + u * u_x - v * u_xx
+    f0 = torch.zeros_like(f)
+
+    return torch.nn.functional.mse_loss(f, f0)
 
 
 def pinn_loss_1d(u, u0, v):
@@ -368,29 +335,41 @@ def pinn_loss_1d(u, u0, v):
     return loss_u0, loss_f
 
 
-def burgers_loss(u, u0, v, t, raw=None):
+def new_burgers_loss(u, u0, v, t, x):
+    Du = ad_burgers(u, x, v, t)
+    f = torch.zeros(Du.shape, device=u.device)
+    loss_f = F.mse_loss(Du, f)
+    
     batchsize = u.size(0)
     nt = u.size(1)
     nx = u.size(2)
     u = u.reshape(batchsize, nt, nx)
-    if raw is not None:
-        raw = raw.reshape(batchsize, nt, nx)
     
     index_t = torch.zeros(nx,).long()
     index_x = torch.tensor(range(nx)).long()
     boundary_u0 = u[:, index_t, index_x]
     loss_ic = F.mse_loss(boundary_u0, u0)
     
-    Du = fdm_burgers(u, v, t)[:, :, :]
+    return loss_ic, loss_f
+    
+
+def burgers_loss(u, u0, v, t, dx, dt):
+    batchsize = u.size(0)
+    nt = u.size(1)
+    nx = u.size(2)
+    u = u.reshape(batchsize, nt, nx)
+    
+    index_t = torch.zeros(nx,).long()
+    index_x = torch.tensor(range(nx)).long()
+    boundary_u0 = u[:, index_t, index_x]
+    loss_ic = F.mse_loss(boundary_u0, u0)
+    
+    # Du = fdm_burgers(u, v, t)[:, :, :]
+    Du = new_fdm_burgers(u, v, dx, dt)
     f = torch.zeros(Du.shape, device=u.device)
     loss_f = F.mse_loss(Du, f)
     
-    if raw is not None:
-        Du_raw = fdm_burgers(raw, v, t)[:, :, :]
-        loss_raw = F.mse_loss(Du, Du_raw)
-        return loss_ic, loss_f, loss_raw
-    else:
-        return loss_ic, loss_f
+    return loss_ic, loss_f
 
 
 def fdm_ns_vorticity(w, v=1/40, t_interval=1.0):

@@ -43,6 +43,18 @@ class UNet1d(nn.Module):
         )
 
     def forward(self, x):
+        """
+
+        Args:
+            x (torch.Tensor): (batch_size, t_grid, x_grid, in_channels)
+
+        Returns:
+            x (torch.Tensor): (batch_size, t_grid, x_grid, out_channels)
+        """
+        batch_size, t_grid, x_grid, in_channels = x.shape
+        x = x.permute(0, 3, 1, 2)
+        x = x.view(batch_size, in_channels, -1)
+        
         enc1 = self.encoder1(x)
         enc2 = self.encoder2(self.pool1(enc1))
         enc3 = self.encoder3(self.pool2(enc2))
@@ -62,7 +74,11 @@ class UNet1d(nn.Module):
         dec1 = self.upconv1(dec2)
         dec1 = torch.cat((dec1, enc1), dim=1)
         dec1 = self.decoder1(dec1)
-        return self.conv(dec1)
+        
+        out = self.conv(dec1)
+        out = out.view(batch_size, -1, t_grid, x_grid)
+        out = out.permute(0, 2, 3, 1)
+        return out
 
     @staticmethod
     def _block(in_channels, features, name):

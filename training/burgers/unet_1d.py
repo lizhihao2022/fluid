@@ -2,7 +2,7 @@ import torch
 import logging
 import os
 from tqdm import tqdm
-from utils import LpLoss, LossRecord, burgers_loss
+from utils import LpLoss, LossRecord, burgers_loss, fdm_burgers
 from time import time
 from models import UNet1d
 from dataset import BurgersDataset
@@ -85,11 +85,15 @@ class UNet1DTrainer(BaseTrainer):
                 x = x.to('cuda')
                 y = y.to('cuda')
                 # compute loss
-                new_x = x[:, 0, :, :1].permute(0, 2, 1)
-                y_pred = model(new_x)
+                # new_x = x[:, 0, :, :1].permute(0, 2, 1)
+                y_pred = model(x)
                 data_loss = criterion(y_pred, y)
                 ic_loss, equation_loss = burgers_loss(y_pred, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'])
                 train_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
+                if data_loss.item() < 0.1:
+                    train_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
+                else:
+                    train_loss = self.data_weight * data_loss
                 # compute gradient
                 optimizer.zero_grad()
                 train_loss.backward()
@@ -115,10 +119,14 @@ class UNet1DTrainer(BaseTrainer):
                 x = x.to('cuda')
                 y = y.to('cuda')
                 # compute loss
-                y_pred = model(x[:, 0, :, :1].permute(0, 2, 1)).reshape(y.shape)
+                y_pred = model(x).reshape(y.shape)
                 data_loss = criterion(y_pred, y)
                 ic_loss, equation_loss = burgers_loss(y_pred, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'])
-                eval_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
+                if data_loss.item() < 0.1:
+                    eval_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
+                else:
+                    eval_loss = self.data_weight * data_loss
+                # eval_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
                 loss_record.update({
                     split + '_loss': eval_loss.item(),
                     'data_loss': data_loss.item(),
@@ -132,15 +140,17 @@ class UNet1DTrainer(BaseTrainer):
             for x, y in dataset.test_loader:
                 x = x.to('cuda')
                 y = y.to('cuda')
-                y_pred = model(x[:, 0, :, :1].permute(0, 2, 1)).reshape(y.shape)
+                y_pred = model(x).reshape(y.shape)
+                fdm = fdm_burgers(y_pred, dataset.test_dataset.v, dataset.test_dataset.t)
                 break
         
         x = x.cpu().detach().numpy()[0]
         y = y.cpu().detach().numpy()[0]
         y_pred = y_pred.cpu().detach().numpy()[0]
+        fdm = fdm.cpu().detach().numpy()[0]
         
         if heatmap:
-            burgers_heatmap(y, y_pred, 
+            burgers_heatmap(y, y_pred, fdm,
                             start_x=dataset.test_dataset.start_x, end_x=dataset.test_dataset.end_x,
                             dx=dataset.test_dataset.dx, t=dataset.test_dataset.t, dt=dataset.test_dataset.dt, v=dataset.test_dataset.v,
                             file_path=os.path.join(self.saving_path, "burgers_heatmap.png"))

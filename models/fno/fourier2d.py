@@ -1,7 +1,17 @@
 import torch.nn as nn
 from .basics import SpectralConv2d
 from .utils import _get_act, add_padding2, remove_padding2
+import torch
 
+
+class Sine(torch.nn.Module):
+    def __init(self):
+        super().__init__()
+
+    def forward(self, input):
+        # See paper sec. 3.2, final paragraph, and supplement Sec. 1.5 for discussion of factor 30
+        return torch.sin(30 * input)
+    
 
 class FNO2d(nn.Module):
     def __init__(self, modes1, modes2,
@@ -45,10 +55,12 @@ class FNO2d(nn.Module):
         self.ws = nn.ModuleList([nn.Conv1d(in_size, out_size, 1)
                                  for in_size, out_size in zip(self.layers, self.layers[1:])])
 
+        
         self.fc1 = nn.Linear(layers[-1], fc_dim)
         self.fc2 = nn.Linear(fc_dim, layers[-1])
         self.fc3 = nn.Linear(layers[-1], out_dim)
         self.act = _get_act(act)
+        # self.sin = Sine()
 
     def forward(self, x):
         '''
@@ -75,6 +87,7 @@ class FNO2d(nn.Module):
             x1 = speconv(x)
             x2 = w(x.view(batchsize, self.layers[i], -1)).view(batchsize, self.layers[i+1], size_x, size_y)
             x = x1 + x2
+            # x = x2 + self.sin(x2)
             if i != length - 1:
                 x = self.act(x)
         x = remove_padding2(x, num_pad1, num_pad2)

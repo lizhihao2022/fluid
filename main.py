@@ -16,6 +16,7 @@ def main():
         saving_path, saving_name = None, None
 
     args['saving_path'] = saving_path
+    args['saving_name'] = saving_name
     save_config(args, saving_path)
     set_device(args['cuda'], args['device'])
     set_seed(args['random_seed'])

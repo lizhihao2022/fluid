@@ -12,7 +12,13 @@ class BurgersDataset:
                  train_batchsize=256, eval_batchsize=128, 
                  train_ratio=0.6, valid_ratio=0.2, test_ratio=0.2, 
                  subset=False, subset_ratio=0.2):
-        all_data = self.load_hdf5_data(data_path=data_path)
+        
+        if data_path.endswith('.mat'):
+            all_data = self.load_mat_data(data_path=data_path)
+        elif data_path.endswith('.hdf5'):
+            all_data = self.load_hdf5_data(data_path=data_path)
+        else:
+            raise ValueError('Unsupported data format.')
         
         if subset:
             data_size = all_data.shape[0] * subset_ratio
@@ -38,7 +44,7 @@ class BurgersDataset:
         
         del all_data
         
-        self.train_loader = DataLoader(self.train_dataset, batch_size=train_batchsize, shuffle=False)
+        self.train_loader = DataLoader(self.train_dataset, batch_size=train_batchsize, shuffle=True)
         self.valid_loader = DataLoader(self.valid_dataset, batch_size=eval_batchsize, shuffle=False)
         self.test_loader = DataLoader(self.test_dataset, batch_size=eval_batchsize, shuffle=False)
     
@@ -48,15 +54,10 @@ class BurgersDataset:
         
         return all_data
     
-    def load_data(self):
-        all_data = sio.loadmat(self.data_path)
-        x = all_data['input'][:, ::self.x_sample_factor]
-        y = all_data['output'][:, ::self.t_sample_factor, ::self.x_sample_factor]
-        v = all_data['visc']
+    def load_mat_data(self, data_path):
+        all_data = sio.loadmat(data_path)
         
-        self.x = torch.from_numpy(x).float()
-        self.y = torch.from_numpy(y).float()
-        self.v = torch.from_numpy(v).float().item()
+        return all_data['output']
 
 
 class BurgersBase(Dataset):
@@ -77,9 +78,6 @@ class BurgersBase(Dataset):
         
         self.x, self.y = self.process(data, self.x_sample_factor, self.t_sample_factor, 
                                       self.num_grid_x, self.num_grid_t)
-        
-        # if mode == "train":
-        #     self.pde_x, pde_y  = self.process(data, 1, 1, raw_resolution[0], raw_resolution[1])
         
     def process(self, data, x_sample_factor, t_sample_factor, num_grid_x, num_grid_t):
         x = data[:, 0, ::x_sample_factor]
@@ -109,8 +107,4 @@ class BurgersBase(Dataset):
         return self.x.shape[0]
     
     def __getitem__(self, idx):
-        # if self.mode == "train":
-        #     return self.x[idx], self.y[idx], self.pde_x[idx]
-        # else:
-        #     return self.x[idx], self.y[idx]
         return self.x[idx], self.y[idx]

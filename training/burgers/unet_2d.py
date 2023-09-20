@@ -85,14 +85,23 @@ class UNet2DTrainer(BaseTrainer):
                 x = x.to('cuda')
                 y = y.to('cuda')
                 # pad x
-                x_0 = x[:, :1, :, :]
-                x_0 = x_0.repeat(1, x.shape[2]-x.shape[1], 1, 1)
-                new_x = torch.cat([x_0, x], dim=1)
+                if x.shape[2] > x.shape[1]:
+                    x_0 = x[:, :1, :, :]
+                    x_0 = x_0.repeat(1, x.shape[2]-x.shape[1], 1, 1)
+                    new_x = torch.cat([x_0, x], dim=1)
+                    # cut off the padded part
+                    y_pred = model(new_x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+                    y_pred = y_pred[:, -y.shape[1]:, :, 0]
+                else:
+                    x_0 = x[:, :, :1, :]
+                    x_0 = x_0.repeat(1, 1, x.shape[1]-x.shape[2], 1)
+                    new_x = torch.cat([x_0, x], dim=2)
+                    # cut off the padded part
+                    print(new_x.shape)
+                    y_pred = model(new_x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+                    y_pred = y_pred[:, :, -y.shape[2]:, 0]
                 # compute loss
-                y_pred = model(new_x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
-                y_pred = y_pred[:, -y.shape[1]:, :, 0]
                 data_loss = criterion(y_pred, y)
-                # cut off the padded part
                 ic_loss, equation_loss = burgers_loss(y_pred, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'])
                 train_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
                 # compute gradient

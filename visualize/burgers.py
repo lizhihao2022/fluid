@@ -4,7 +4,26 @@ import numpy as np
 from tqdm import tqdm
 
 
-def burgers_plot(u, out, start_x, end_x, dx, t0, dt, v, file_path):
+def burgers_single(u, start_x, end_x, t, file_path=None):
+    fig, ax = plt.subplots()
+    heatmap = ax.imshow(u, 'viridis', origin='lower', aspect='auto')
+    ax.set_xlabel('x')
+    ax.set_ylabel('t')
+    old_xticks = ax.get_xticks()[1:-1]
+    new_xticks = np.linspace(start_x, end_x, len(old_xticks))
+    new_xticks = np.round(new_xticks, 2)
+    ax.set_xticks(old_xticks, new_xticks)
+    old_yticks = ax.get_yticks()[1:-1]
+    new_yticks = np.linspace(0, t, len(old_yticks))
+    ax.set_yticks(old_yticks, new_yticks)
+    fig.colorbar(heatmap, ax=ax)
+    
+    if file_path is not None:
+        plt.savefig(file_path)
+    plt.show()
+
+
+def burgers_plot(u, out, start_x, end_x, dx, t0, dt, v, file_path=None):
     x = np.arange(start_x, end_x, dx)
     fig, ax = plt.subplots()
     ax.plot(x, u[t0], label='Ground Truth', color='blue')
@@ -14,7 +33,8 @@ def burgers_plot(u, out, start_x, end_x, dx, t0, dt, v, file_path):
     ax.set_xlabel('x')
     ax.set_ylabel('u')
     ax.set_title('Burgers Equation mu=%f' % v)
-    plt.savefig(file_path)
+    if file_path is not None:
+        plt.savefig(file_path)
     plt.show()
     
 
@@ -40,7 +60,7 @@ def burgers_movie(u, out, start_x, end_x, dx, t, dt, v, file_path):
     ani.save(file_path, writer=writer)
     
 
-def burgers_heatmap(u, out, fdm, start_x, end_x, dx, t, dt, v, file_path, cmap='viridis'):
+def burgers_heatmap(u, out, pde, start_x, end_x, dx, t, dt, v, file_path, cmap='viridis'):
     fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(22, 4))
     
     heatmap_1 = ax1.imshow(u, cmap, origin='lower', aspect='auto')
@@ -74,15 +94,15 @@ def burgers_heatmap(u, out, fdm, start_x, end_x, dx, t, dt, v, file_path, cmap='
     ax3.set_yticks(old_yticks, new_yticks)
     fig.colorbar(heatmap_3, ax=ax3)
     
-    fdm = np.abs(fdm)
-    heatmap_4 = ax4.imshow(fdm, cmap, origin='lower', aspect='auto')
-    ax4.set_title('Equation Error (FDM)')
+    pde = np.abs(pde)
+    heatmap_4 = ax4.imshow(pde, cmap, origin='lower', aspect='auto')
+    ax4.set_title('PDE Error')
     ax4.set_xlabel('x')
     ax4.set_ylabel('t')
     ax4.set_xticks(old_xticks, new_xticks)
-    old_yticks = ax4.get_yticks()[1:]
-    new_yticks = np.linspace(dt, t-dt, len(old_yticks))
-    new_yticks = np.round(new_yticks, 2)
+    # old_yticks = ax4.get_yticks()[1:]
+    # new_yticks = np.linspace(dt, t-dt, len(old_yticks))
+    # new_yticks = np.round(new_yticks, 2)
     ax4.set_yticks(old_yticks, new_yticks)
     fig.colorbar(heatmap_4, ax=ax4)
     

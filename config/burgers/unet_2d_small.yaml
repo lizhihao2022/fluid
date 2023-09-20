@@ -1,32 +1,32 @@
 model:
-  model: 'UNet1d'
+  model: 'UNet2d'
   in_channels: 3
   out_channels: 1
-  init_features: 256
+  init_features: 64
 
 data:
   dataset: 'Burgers'
-  data_path: '../data/fluid/burgers/1D_Burgers_Sols_Nu0.01.hdf5'
-  start_x: -1
+  data_path: '../data/fluid/burgers/burgers_pino.mat'
+  start_x: 0
   end_x: 1
-  t: 2
-  raw_resolution: [1024, 201]
-  sample_resolution: [256, 201]
+  t: 1
+  raw_resolution: [128, 101]
+  sample_resolution: [64, 51]
   v: 0.01
   train_ratio: 0.6
   valid_ratio: 0.2
   test_ratio: 0.2
-  subset: True
+  subset: False
   subset_ratio: 0.1
 
 train:
   random_seed: 2020
   cuda: True
-  device: 7
+  device: 4
   epochs: 500
   patience: -1
   eval_freq: 5
-  train_batchsize: 10
+  train_batchsize: 400
   saving_checkpoints: False
   saving_best: True
   data_weight: 10.0
@@ -34,8 +34,8 @@ train:
   ic_weight: 0.0
 
 eval:
-  eval_batchsize: 10
-  eval_resolution: [1024, 201]
+  eval_batchsize: 100
+  eval_resolution: [128, 101]
   visualize: True
   heatmap: True
   movie: True

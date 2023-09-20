@@ -77,7 +77,10 @@ class SpectralConv2d(nn.Module):
             self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
         self.weights2 = nn.Parameter(
             self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
-
+        # self.weights = nn.Parameter(
+        #     self.scale * torch.rand(in_channels, out_channels, 101, 129, dtype=torch.cfloat))
+        
+        
     def forward(self, x):
         batchsize = x.shape[0]
         size1 = x.shape[-2]
@@ -86,12 +89,14 @@ class SpectralConv2d(nn.Module):
         x_ft = torch.fft.rfftn(x, dim=[2, 3])
 
         # Multiply relevant Fourier modes
-        out_ft = torch.zeros(batchsize, self.out_channels, x.size(-2), x.size(-1) // 2 + 1, device=x.device,
-                                dtype=torch.cfloat)
+        out_ft = torch.zeros(batchsize, self.out_channels, x.size(-2), x.size(-1) // 2 + 1, device=x.device, dtype=torch.cfloat)
         out_ft[:, :, :self.modes1, :self.modes2] = \
             compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
         out_ft[:, :, -self.modes1:, :self.modes2] = \
             compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
+
+        # out_ft = torch.zeros_like(x_ft, device=x.device, dtype=torch.cfloat)
+        # out_ft = compl_mul2d(x_ft, self.weights)
 
         # Return to physical space
         x = torch.fft.irfftn(out_ft, s=(x.size(-2), x.size(-1)), dim=[2, 3])

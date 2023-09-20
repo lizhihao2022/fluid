@@ -1,8 +1,9 @@
 import torch
 import logging
 import os
+import wandb
 from tqdm import tqdm
-from utils import LpLoss, burgers_loss, LossRecord, fdm_burgers
+from utils import LpLoss, burgers_loss, LossRecord, ad_burgers, ad_burgers_loss
 from time import time
 from models import FNO2d
 from dataset import BurgersDataset
@@ -36,15 +37,21 @@ class PINO2DTrainer(BaseTrainer):
         counter = 0
         
         for epoch in range(self.epochs):
-            train_loss_record = self.train(model, train_loader, optimizer, criterion, scheduler, regularizer, v=kwargs['v'], t=kwargs['t'])
+            train_loss_record = self.train(model, train_loader, optimizer, criterion, scheduler, regularizer)
             if self.verbose:
                 self.logger("Epoch {} | {} | lr: {:.6f}".format(epoch, train_loss_record, optimizer.param_groups[0]["lr"]))
 
+            if self.wandb:
+                wandb.log(train_loss_record.to_dict())
+            
             if (epoch + 1) % self.eval_freq == 0:
                 valid_loss_record = self.evaluate(model, valid_loader, criterion, eval_metrics, split="valid", v=kwargs['v'], t=kwargs['t'])
                 if self.verbose:
                     self.logger("Epoch {} | {}".format(epoch, valid_loss_record))
                 valid_metrics = valid_loss_record.to_dict()
+                
+                if self.wandb:
+                    wandb.log(valid_metrics)
                 
                 if not best_metrics or valid_metrics['valid_loss'] < best_metrics['valid_loss']:
                     counter = 0
@@ -75,22 +82,30 @@ class PINO2DTrainer(BaseTrainer):
         self.logger("Valid loss: {}".format(valid_loss_record))
         test_loss_record = self.evaluate(model, test_loader, criterion, eval_metrics, split="test", v=kwargs['v'], t=kwargs['t'])
         self.logger("Test loss: {}".format(test_loss_record))
+        
+        if self.wandb:
+            wandb.run.summary['epoch'] = best_epoch
+            wandb.run.summary.update(test_loss_record.to_dict())
+        
 
     def train(self, model, train_loader, optimizer, criterion, scheduler=None, regularizer=None, **kwargs):
-        loss_record = LossRecord(['train_loss', 'data_loss', 'equation_loss', 'ic_loss', 'raw_equation_loss', 'f0_loss'])
+        loss_record = LossRecord(['train_loss', 'train_data_loss', 'train_equation_loss', 'train_ic_loss'])
         model.cuda()
         model.train()
         with tqdm(total=len(train_loader)) as bar:
             for x, y in train_loader:
+                x = x.requires_grad_(True)
                 x = x.to('cuda')
                 y = y.to('cuda')
-                # pde_x = pde_x.to('cuda')
                 # compute loss
                 y_pred = model(x).reshape(y.shape)
-                # pde_y_pred = model(pde_x).squeeze()
                 data_loss = criterion(y_pred, y)
-                ic_loss, equation_loss_0, equation_loss  = burgers_loss(y_pred, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'], raw=y)
-                raw_ic_loss, raw_equation_loss = burgers_loss(y, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'])
+                # ic_loss, equation_loss, = burgers_loss(y_pred, x[:, 0, :, 0], 
+                #                                        v=train_loader.dataset.v, t=train_loader.dataset.t,
+                #                                        dx=train_loader.dataset.dx, dt=train_loader.dataset.dt)
+                
+                equation_loss = ad_burgers_loss(y_pred, x, v=train_loader.dataset.v)
+                ic_loss = torch.tensor(0.0)
                 train_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
                 # compute gradient
                 optimizer.zero_grad()
@@ -99,11 +114,9 @@ class PINO2DTrainer(BaseTrainer):
                 # record loss and update progress bar
                 loss_record.update({
                     'train_loss': train_loss.item(),
-                    'data_loss': data_loss.item(),
-                    'equation_loss': equation_loss.item(),
-                    'ic_loss': ic_loss.item(),
-                    'raw_equation_loss': raw_equation_loss.item(),
-                    'f0_loss': equation_loss_0.item(),
+                    'train_data_loss': data_loss.item(),
+                    'train_equation_loss': equation_loss.item(),
+                    'train_ic_loss': ic_loss.item(),
                 })
                 bar.update(1)
                 bar.set_postfix_str("train loss: {:.4f}".format(train_loss.item()))
@@ -112,44 +125,52 @@ class PINO2DTrainer(BaseTrainer):
         return loss_record
     
     def evaluate(self, model, eval_loader, criterion, metric_list, split="valid", **kwargs):
-        loss_record = LossRecord([split + '_loss', 'data_loss', 'equation_loss', 'ic_loss', 'raw_equation_loss', 'f0_loss'])
+        loss_record = LossRecord([split + '_loss', split + '_data_loss', 
+                                  split + '_equation_loss', split + '_ic_loss'])
         model.eval()
-        with torch.no_grad():
-            for x, y in eval_loader:
-                x = x.to('cuda')
-                y = y.to('cuda')
-                # compute loss
-                y_pred = model(x).reshape(y.shape)
-                data_loss = criterion(y_pred, y)
-                ic_loss, equation_loss_0, equation_loss = burgers_loss(y_pred, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'], raw=y)
-                raw_ic_loss, raw_equation_loss = burgers_loss(y, x[:, 0, :, 0], v=kwargs['v'], t=kwargs['t'])
-                eval_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
-                loss_record.update({
-                    split + '_loss': eval_loss.item(),
-                    'data_loss': data_loss.item(),
-                    'equation_loss': equation_loss.item(),
-                    'ic_loss': ic_loss.item(),
-                    'raw_equation_loss': raw_equation_loss.item(),
-                    'f0_loss': equation_loss_0.item(),
-                })
+        # with torch.no_grad():
+        for x, y in eval_loader:
+            x = x.requires_grad_(True)
+            x = x.to('cuda')
+            y = y.to('cuda')
+            # compute loss
+            y_pred = model(x).reshape(y.shape)
+            data_loss = criterion(y_pred, y)
+            # ic_loss, equation_loss = burgers_loss(y_pred, x[:, 0, :, 0], 
+            #                                       v=eval_loader.dataset.v, t=eval_loader.dataset.t,
+            #                                       dx=eval_loader.dataset.dx, dt=eval_loader.dataset.dt)
+            
+            equation_loss = ad_burgers_loss(y_pred, x, v=eval_loader.dataset.v)
+            ic_loss = torch.tensor(0.0)
+            eval_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
+            # if data_loss < 0.1:
+            #     eval_loss = self.data_weight * data_loss + self.f_weight * equation_loss + self.ic_weight * ic_loss
+            # else:
+            #     eval_loss = self.data_weight * data_loss
+            loss_record.update({
+                split + '_loss': eval_loss.item(),
+                split + '_data_loss': data_loss.item(),
+                split + '_equation_loss': equation_loss.item(),
+                split + '_ic_loss': ic_loss.item(),
+            })
         return loss_record
     
     def visualize(self, model, dataset, heatmap=False, movie=False):
-        with torch.no_grad():
-            for x, y in dataset.test_loader:
-                x = x.to('cuda')
-                y = y.to('cuda')
-                y_pred = model(x).reshape(y.shape)
-                fdm = fdm_burgers(y_pred, dataset.test_dataset.v, dataset.test_dataset.t)
-                break
+        for x, y in dataset.test_loader:
+            x = x.requires_grad_(True)
+            x = x.to('cuda')
+            y = y.to('cuda')
+            y_pred = model(x).reshape(y.shape)
+            pde = ad_burgers(y_pred, x, dataset.test_dataset.v)
+            break
         
         x = x.cpu().detach().numpy()[0]
         y = y.cpu().detach().numpy()[0]
         y_pred = y_pred.cpu().detach().numpy()[0]
-        fdm = fdm.cpu().detach().numpy()[0]
+        pde = pde.cpu().detach().numpy()[0]
         
         if heatmap:
-            burgers_heatmap(y, y_pred, fdm,
+            burgers_heatmap(y, y_pred, pde,
                             start_x=dataset.test_dataset.start_x, end_x=dataset.test_dataset.end_x, dx=dataset.test_dataset.dx, 
                             t=dataset.test_dataset.t, dt=dataset.test_dataset.dt, v=dataset.test_dataset.v,
                             file_path=os.path.join(self.saving_path, "burgers_heatmap.png"))
@@ -164,6 +185,14 @@ class PINO2DTrainer(BaseTrainer):
 def pino_burgers(args):
     if args['verbose']:
         logger = logging.info if args['log'] else print
+        
+    if args['wandb']:
+        wandb.init(
+            project=args['wandb_project'], 
+            name=args['saving_name'],
+            tags=[args['model'], args['dataset'], args['act']],
+            config=args)
+    
     # load data
     if args['verbose']:
         logger("Loading {} dataset".format(args['dataset']))
